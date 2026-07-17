@@ -1,0 +1,13 @@
+# Netlify build config. The Next.js runtime plugin is auto-installed by Netlify,
+# so no publish dir / plugin block is needed here.
+[build]
+  command = "npm run build"
+
+[build.environment]
+  # Match .nvmrc so local and CI use the same Node.
+  NODE_VERSION = "22.21.1"
+  # Skip audit/fund work during install (faster, less memory, fewer flakes).
+  NPM_FLAGS = "--no-audit --no-fund"
+  # Raise Node's heap ceiling so install/build don't OOM on large dep trees
+  # (@wix/sdk + Tailwind/Next native binaries).
+  NODE_OPTIONS = "--max-old-space-size=4096"
