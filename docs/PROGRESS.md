@@ -11,7 +11,7 @@ _Last updated: 2026-07-18_
 | **0 — Setup & Wix connection** | ✅ Done (Netlify deploy optional, not yet done) |
 | **1 — Auth (Members)** | ✅ Done — built, tested, **live round-trip confirmed on Netlify** (register → email code → login all work) |
 | **2 — Create & manage events** | ✅ Done — built, tested, **live create→CMS round-trip confirmed on Netlify** (event created, appears in CMS + `/dashboard`) |
-| **3 — Public invite + RSVP + pledge** | ✅ Done — built, tested (152-test suite), **live RSVP + pledge writes confirmed on localhost** (rows seen in CMS); OG preview on prod still to verify |
+| **3 — Public invite + RSVP + pledge** | ✅ Done — built, tested (152-test suite), **live RSVP + pledge confirmed on both localhost and production Netlify** (rows in CMS); OG preview still to verify |
 | 4 — Organizer dashboard detail | ⬜ Next |
 | 5 — Deploy & submit | ⬜ |
 | 6 — Showcase extras (optional) | ⬜ |
@@ -122,9 +122,13 @@ Vitest + jsdom + @testing-library. **152 tests / 26 files.** `npm test` (also `t
 
 **Verified:** 152-test suite (was 109), `tsc`, lint, `next build` (routes incl. `/api/{invite,rsvp,pledge}`, SSR `/i/[slug]`) all pass; **no `WIX_API_KEY` in the client bundle** (public client id present).
 
-> ✅ **Live RSVP + pledge writes confirmed (2026-07-18, localhost):** completed the guest flow on `/i/[slug]` → `rsvps` and `pledges` rows appeared in the Wix CMS. Confirms the admin API-key write path (no dashboard config needed — collections stay Private). Core Phase 3 exit **closed**.
+> ✅ **Live RSVP + pledge confirmed on localhost (2026-07-18) AND production Netlify (2026-07-19):** completed the guest flow on `/i/[slug]` → `rsvps` and `pledges` rows appeared in the Wix CMS. Confirms the admin API-key path end-to-end (no dashboard config needed — collections stay Private). Phase 3 exit **closed**.
 >
-> ⏳ **Still to verify:** the OG/Twitter rich preview (paste the invite URL into an OG debugger) and the same flow on the **production Netlify** deploy.
+> 🔧 **Prod SSR 500 root cause (2026-07-19): `WIX_API_KEY` / `WIX_SITE_ID` were not set in Netlify's env**, so `getWixApiClient()` threw during the `/i/[slug]` server render (and would have broken all prod RSVP/pledge writes too). NOT a code bug. See the Netlify env-var gotcha below. Diagnosed by a TEMP try/catch on the page that surfaced the real error (Netlify hides Server Component errors behind a digest).
+>
+> ⏳ **Still to verify:** the OG/Twitter rich preview (paste the prod invite URL into an OG debugger / chat app).
+>
+> 🧹 **TEMP diagnostics to remove before final submit:** the try/catch + `generateMetadata` wrapper in `app/i/[slug]/page.tsx`, and the `detail` field in `app/api/events/route.ts`.
 
 ## Non-obvious gotchas (for future sessions)
 
@@ -132,16 +136,18 @@ Vitest + jsdom + @testing-library. **152 tests / 26 files.** `npm test` (also `t
 - `@wix/data` `items`: `items.query(collectionId).eq(field, val).find()` → `{ items }`; `items.insert(collectionId, item)` → the created item; `items.get(collectionId, id)` → the item. Member OAuth writes stamp `_owner`; admin API-key reads see all rows (used for global slug-uniqueness).
 - Wix auth methods (`register`/`login`/`processVerification`/`sendPasswordResetEmail`/`logout`) live on **`client.auth`** (the OAuthStrategy instance), NOT `@wix/members`. `@wix/members` is profile ops only.
 - `wix_refreshToken` cookie is intentionally **not httpOnly** (browser client reads it via js-cookie) — matches Wix's official starter.
+- **Netlify env vars for the server-side (admin API-key) client.** `WIX_API_KEY` + `WIX_SITE_ID` must be set in **Netlify → Site configuration → Environment variables**, and their **scopes must include Functions/Runtime** (not just Builds) — SSR pages and API routes run as Netlify Functions. If they're missing/mis-scoped, `getWixApiClient()` throws at runtime: any server-rendered data page 500s and every guest RSVP/pledge write fails, even though the site builds fine and login (which only needs the public `NEXT_PUBLIC_WIX_CLIENT_ID`) still works. **Env-var changes require a fresh redeploy** to take effect. This caused the Phase 3 prod SSR 500 on `/i/[slug]` (2026-07-19).
+- Netlify hides Server Component render errors behind a generic digest ("A server error occurred"). To debug, temporarily wrap the server component's data fetch in try/catch and render `err.message`/`err.stack` — or read the function logs for the digest. `next dev` won't reproduce prod-build/runtime issues; `next start` reproduces the build locally but not Netlify's environment (e.g. missing env vars).
 
 ## Open / next actions
 
-- [ ] (Optional Phase 0 tail) Commit + push scaffold → connect Netlify to repo → set the 3 env vars in Netlify → confirm live URL.
-- [ ] **Close Phase 1 exit:** manually register a real member, verify the email code, confirm landing on the empty dashboard, and log out (needs a real inbox — can't be done headlessly).
-- [ ] **Close Phase 2 exit:** log in as a member, create an event at `/events/new`, confirm the row appears in the **Wix CMS dashboard** and on `/dashboard`. If the create 403s, set the `events` collection permission to **"Site Member Author"**.
-- [x] **Phase 3 core exit closed (2026-07-18, localhost):** RSVP + pledge writes confirmed → rows in CMS.
-- [ ] **Phase 3 tail:** verify the OG rich preview (OG debugger) + repeat the invite flow on production Netlify.
+- [x] **Phase 0 tail done:** deployed to Netlify (`wrappit.netlify.app`); all env vars now set (incl. `WIX_API_KEY`/`WIX_SITE_ID` scoped to Functions).
+- [x] **Phase 1 exit closed (2026-07-18):** live register → email code → login confirmed on prod.
+- [x] **Phase 2 exit closed (2026-07-18):** live member create → CMS row + `/dashboard` confirmed (after setting `events` perm to "Member-generated content").
+- [x] **Phase 3 exit closed (2026-07-19):** RSVP + pledge confirmed on localhost and prod → rows in CMS.
+- [ ] **Phase 3 tail:** verify the OG rich preview (paste the prod invite URL into an OG debugger / chat app).
 - [ ] **Phase 4 — Organizer dashboard detail:** on `/events/[id]`, show the RSVP list, the **summed pledge total**, copy-invite-link (done), and suggested share text. Exit: organizer sees submitted RSVPs and a correct pledge total.
-- [ ] **Before final submit:** remove the TEMP `detail` field from the 500 handler in `app/api/events/route.ts`.
+- [ ] **Before final submit — remove TEMP diagnostics:** the try/catch + `generateMetadata` wrapper in `app/i/[slug]/page.tsx`, and the `detail` field in the 500 handler in `app/api/events/route.ts`.
 
 ## How to run locally
 

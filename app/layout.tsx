@@ -14,6 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // Resolves relative OG image URLs to absolute — required for link previews
+  // (WhatsApp, etc.). Override per-env with NEXT_PUBLIC_SITE_URL.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://wrappit.netlify.app"),
   title: "Wrappit — Group Birthday Gifting",
   description:
     "Organize a group birthday gift: share an invite, collect RSVPs, and track pledges toward one present.",
