@@ -71,6 +71,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ event }, { status: 201 });
   } catch (err) {
     console.error('Failed to create event', err);
-    return NextResponse.json({ error: 'Could not create the event. Please try again.' }, { status: 500 });
+    // TEMP DIAGNOSTIC: surface the underlying cause (remove before final submit).
+    const detail =
+      err instanceof Error
+        ? err.message
+        : typeof err === 'object' && err
+          ? JSON.stringify(err)
+          : String(err);
+    return NextResponse.json(
+      { error: 'Could not create the event. Please try again.', detail },
+      { status: 500 },
+    );
   }
 }

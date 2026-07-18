@@ -9,16 +9,16 @@ _Last updated: 2026-07-18_
 | Phase | State |
 |---|---|
 | **0 — Setup & Wix connection** | ✅ Done (Netlify deploy optional, not yet done) |
-| **1 — Auth (Members)** | ✅ Built, tested (105-test suite), dashboard bug fixed (live member round-trip pending a manual run) |
-| **2 — Create & manage events** | ✅ Built & tested (live create→CMS round-trip pending a manual run) |
-| 3 — Public invite + RSVP + pledge | ⬜ Next |
-| 4 — Organizer dashboard detail | ⬜ |
+| **1 — Auth (Members)** | ✅ Done — built, tested, **live round-trip confirmed on Netlify** (register → email code → login all work) |
+| **2 — Create & manage events** | ✅ Done — built, tested, **live create→CMS round-trip confirmed on Netlify** (event created, appears in CMS + `/dashboard`) |
+| **3 — Public invite + RSVP + pledge** | ✅ Done — built, tested (152-test suite), **live RSVP + pledge writes confirmed on localhost** (rows seen in CMS); OG preview on prod still to verify |
+| 4 — Organizer dashboard detail | ⬜ Next |
 | 5 — Deploy & submit | ⬜ |
 | 6 — Showcase extras (optional) | ⬜ |
 
 ## Testing
 
-Vitest + jsdom + @testing-library. **105 tests / 17 files.** `npm test` (also `test:watch`, `test:coverage`). Covers the auth surface (client factory, actions/state-machine, member hook, gate, login/signup/forgot flows) and the events surface (slug, validation, `POST /api/events`, `useMyEvents`/`createEvent`/`useEvent`, new-event form, dashboard list). Setup notes: no `@vitejs/plugin-react` (Babel peer conflict — Vitest's oxc handles JSX); `@/*` via native `resolve.tsconfigPaths`.
+Vitest + jsdom + @testing-library. **152 tests / 26 files.** `npm test` (also `test:watch`, `test:coverage`). Covers the auth surface (client factory, actions/state-machine, member hook, gate, login/signup/forgot flows) and the events surface (slug, validation, `POST /api/events`, `useMyEvents`/`createEvent`/`useEvent`, new-event form, dashboard list). Setup notes: no `@vitejs/plugin-react` (Babel peer conflict — Vitest's oxc handles JSX); `@/*` via native `resolve.tsconfigPaths`.
 
 **Dashboard "doesn't load" — fixed.** `RequireMember` redirected on `!isLoading && !member`, but after login the member query holds a stale cached visitor `null` (isLoading=false) while a refetch is in flight, bouncing a real member to `/login`. Now gates on `isFetching`. Regression test: `components/auth/require-member.dashboard-bug.test.tsx`.
 
@@ -47,15 +47,17 @@ Vitest + jsdom + @testing-library. **105 tests / 17 files.** `npm test` (also `t
 - `proxy.ts` (repo root) — seeds anonymous visitor session on first visit (Next 16 renamed `middleware`→`proxy`).
 - `providers.tsx` — TanStack Query provider, wired into `app/layout.tsx`.
 
-**Wix backend (dashboard):** headless project with Members + CMS. Three CMS collections created and **verified connected** via a (now-deleted) temp `/api/health` route:
+**Wix backend (dashboard):** headless project with Members + CMS. Three CMS collections created and **verified connected** via a (now-deleted) temp `/api/health` route. **Field keys (columns)** — CSV import templates with a sample row live in [`docs/wix-collections/`](wix-collections/) ([Events](wix-collections/Events.csv) · [Rsvps](wix-collections/Rsvps.csv) · [Pledges](wix-collections/Pledges.csv)); code must match these keys exactly on insert:
 
-| Collection ID | Entity | Notes |
+| Collection ID | Permissions | Field keys |
 |---|---|---|
-| `events` | Events | + nested fields `paymentLinks` (Array), `giftDisplay` (Object), `charity` (Object) |
-| `rsvps` | Rsvps | |
-| `pledges` | Pledges | `amount` = Number, rest Text |
+| `events` | **Member-generated content** (Create = Site members; Read/Update/Delete = Site member authors) | `childName`, `gender`, `partyDate`, `partyTime`, `location`, `description`, `inviteSlug`, `status` + nested `paymentLinks` (Array), `giftDisplay` (Object), `charity` (Object) |
+| `rsvps` | **Private** (admin-only; guests write via API-key client) | `eventId`, `status` (yes/no attendance), `inviteeName`, `parentName`, `parentName2`, `parentEmail`, `parentPhone`, `dietary` |
+| `pledges` | **Private** (admin-only) | `eventId`, `rsvpId`, `contributorName`, `amount` (Number), `method`, `note` |
 
-> ⚠️ Wix **lowercases collection IDs** at creation, so IDs are `events`/`rsvps`/`pledges` (not `Events`…). Always reference via `COLLECTIONS`. CSV import templates kept in `docs/wix-collections/`.
+> ⚠️ Wix **lowercases collection IDs** at creation, so IDs are `events`/`rsvps`/`pledges` (not `Events`…). Always reference via `COLLECTIONS`.
+>
+> 🔗 **Child collections link by `eventId`, not by `inviteSlug`** — neither `rsvps` nor `pledges` has a slug column. Phase 3 write routes resolve `slug → event → eventId` and store `eventId`. `pledges.rsvpId` is optional (empty for a standalone pledge).
 
 **Env vars** (`.env.local`, git-ignored; template in `.env.template`): `NEXT_PUBLIC_WIX_CLIENT_ID` (public), `WIX_API_KEY` + `WIX_SITE_ID` (server-only secrets). All filled and verified working locally.
 
@@ -75,7 +77,7 @@ Vitest + jsdom + @testing-library. **105 tests / 17 files.** `npm test` (also `t
 
 **Verified:** typecheck, lint, `next build` (all 6 routes) pass. Dev server: all routes 200; visitor token seeded by proxy; **no `WIX_API_KEY` in the client bundle or served HTML** (public client id present, as expected); dashboard SSR renders the gate (not member content) for a visitor; **browser-confirmed** anonymous `/dashboard` → redirects to `/login?redirect=%2Fdashboard`.
 
-> ⏳ **Not yet run:** the full live member round-trip (register → receive email code → verify → land on dashboard → log out) needs a real inbox for the verification code — do this manually to close the Phase 1 exit criterion. Depending on the Wix project's signup policy, `register` may return `SUCCESS` directly (no verification) or `EMAIL_VERIFICATION_REQUIRED`; both paths are handled.
+> ✅ **Live round-trip confirmed (2026-07-18, on Netlify):** register → email verification code → login all work end-to-end. Phase 1 exit criterion **closed**.
 
 ## Phase 2 — what was done
 
@@ -92,7 +94,37 @@ Vitest + jsdom + @testing-library. **105 tests / 17 files.** `npm test` (also `t
 
 **Verified:** 105-test suite, `tsc`, lint, `next build` (all routes incl. `/api/events`, `/events/[id]`, `/events/new`) pass; **no `WIX_API_KEY` in the client bundle** (public client id present).
 
-> ⏳ **Not yet run:** the live create→CMS round-trip (log in as a member → create an event → see the row in the Wix CMS dashboard → see it on `/dashboard`) needs a real member session — do this manually to close the Phase 2 exit criterion. Assumes the `events` collection permission is **"Site Member Author"** (create/read); if creates 403, set that in the Wix dashboard.
+> ✅ **Live create→CMS round-trip confirmed (2026-07-18, on Netlify):** logged-in member created an event, row appeared in the Wix CMS + on `/dashboard`. Phase 2 exit criterion **closed**.
+>
+> 🔧 **Earlier blocker (resolved): `WDE0027` — member lacked insert permission on the `events` collection.** NOT a code bug. **Fix (Wix dashboard, no redeploy):** CMS → Collections → `events` → More Actions → Permissions & Privacy → preset **"Member-generated content"** (Create = Site members; Read/Update/Delete = Site member authors). The `rsvps`/`pledges` collections stay **Private** (admin-only) — guests write via the admin API-key client in Phase 3.
+>
+> 🧹 **TEMP `detail` field** was added to the 500 response body in [`route.ts`](../app/api/events/route.ts) to surface the cause — **remove before final submit.**
+
+## Phase 3 — what was done
+
+**Invite model (`app/model/invite/`):**
+- `invite.types.ts` — `PublicEvent` (guest-safe projection of `WrappitEvent` — no `_id`/`_owner`/`status`), `RsvpInput`, `PledgeInput`, result unions.
+- `to-public-event.ts` — the single field whitelist mapping a raw `events` row → `PublicEvent`.
+- `invite.validation.ts` — `validateRsvpInput` (required invitee/parent names, attendance boolean-or-'yes'/'no', optional email format) + `validatePledgeInput` (positive finite `amount`, accepts numeric string).
+- `get-event.server.ts` — `server-only`; `getPublishedEventBySlug(slug)` via the **admin API-key client**, returns the full row (incl. `_id`) or null for unknown / **draft** events (only `published` is ever exposed).
+- `submit-rsvp.ts` / `submit-pledge.ts` — browser POST helpers (mirror `create-event.ts`).
+
+**Server routes (all guest writes/reads via the admin API-key client — collections stay Private, guests never authenticate):**
+- `GET /api/invite?slug=` — 404 for unknown/draft, else the `PublicEvent`.
+- `POST /api/rsvp` — validate → resolve slug→published event → insert into `rsvps` with `eventId` (never the slug), `status` = 'yes'/'no'. Returns `{ rsvpId }`.
+- `POST /api/pledge` — validate → resolve slug→published event → insert into `pledges` with `eventId`, numeric `amount`, optional `rsvpId` link.
+
+**UI:**
+- `app/i/[slug]/page.tsx` — **SSR** server component; `generateMetadata()` emits OG/Twitter tags (gift image when present); `notFound()` for unknown/draft. Its own minimal public header/footer (NOT the member-gated `app-chrome`).
+- `invite-flow.tsx` (`'use client'`) — 3-step state machine: **invite → RSVP → pledge → done**. Pledge is reachable standalone ("Chip in for the gift" skips RSVP); if a guest RSVPs first, the returned `rsvpId` is linked onto the pledge.
+- `not-found.tsx` — friendly public 404.
+- `app/events/[id]/page.tsx` — placeholder replaced with a real `InviteLinkCard` (full origin-aware URL, copy button, draft warning).
+
+**Verified:** 152-test suite (was 109), `tsc`, lint, `next build` (routes incl. `/api/{invite,rsvp,pledge}`, SSR `/i/[slug]`) all pass; **no `WIX_API_KEY` in the client bundle** (public client id present).
+
+> ✅ **Live RSVP + pledge writes confirmed (2026-07-18, localhost):** completed the guest flow on `/i/[slug]` → `rsvps` and `pledges` rows appeared in the Wix CMS. Confirms the admin API-key write path (no dashboard config needed — collections stay Private). Core Phase 3 exit **closed**.
+>
+> ⏳ **Still to verify:** the OG/Twitter rich preview (paste the invite URL into an OG debugger) and the same flow on the **production Netlify** deploy.
 
 ## Non-obvious gotchas (for future sessions)
 
@@ -106,7 +138,10 @@ Vitest + jsdom + @testing-library. **105 tests / 17 files.** `npm test` (also `t
 - [ ] (Optional Phase 0 tail) Commit + push scaffold → connect Netlify to repo → set the 3 env vars in Netlify → confirm live URL.
 - [ ] **Close Phase 1 exit:** manually register a real member, verify the email code, confirm landing on the empty dashboard, and log out (needs a real inbox — can't be done headlessly).
 - [ ] **Close Phase 2 exit:** log in as a member, create an event at `/events/new`, confirm the row appears in the **Wix CMS dashboard** and on `/dashboard`. If the create 403s, set the `events` collection permission to **"Site Member Author"**.
-- [ ] **Phase 3 — Public invite + RSVP + pledge:** `GET /api/invite`, `POST /api/rsvp`, `POST /api/pledge`; SSR `/i/[slug]` with OG/Twitter meta; 3-step guest flow. Exit: an incognito visitor completes RSVP + pledge → rows written; rich link preview.
+- [x] **Phase 3 core exit closed (2026-07-18, localhost):** RSVP + pledge writes confirmed → rows in CMS.
+- [ ] **Phase 3 tail:** verify the OG rich preview (OG debugger) + repeat the invite flow on production Netlify.
+- [ ] **Phase 4 — Organizer dashboard detail:** on `/events/[id]`, show the RSVP list, the **summed pledge total**, copy-invite-link (done), and suggested share text. Exit: organizer sees submitted RSVPs and a correct pledge total.
+- [ ] **Before final submit:** remove the TEMP `detail` field from the 500 handler in `app/api/events/route.ts`.
 
 ## How to run locally
 

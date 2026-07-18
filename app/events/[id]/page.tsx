@@ -1,6 +1,6 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,53 @@ function formatDate(value?: string | Date): string {
   const d = value instanceof Date ? value : new Date(`${value}T00:00:00`);
   if (Number.isNaN(d.getTime())) return typeof value === 'string' ? value : 'Date TBD';
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+/** The shareable public invite link, with a copy button and a draft warning. */
+function InviteLinkCard({ slug, published }: { slug: string; published: boolean }) {
+  const [copied, setCopied] = useState(false);
+  // Built on the client so it reflects the actual origin (localhost vs. Netlify).
+  const url = typeof window === 'undefined' ? `/i/${slug}` : `${window.location.origin}/i/${slug}`;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard may be unavailable (insecure context) — the link is still shown to copy manually
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Invite link</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {published ? (
+          <p className="text-sm text-muted-foreground">Share this link so guests can RSVP and pledge:</p>
+        ) : (
+          <p className="text-sm text-destructive">
+            This event is a draft — the invite link won&apos;t work until you publish it.
+          </p>
+        )}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <code className="flex-1 truncate rounded bg-muted px-2 py-1.5 text-sm">{url}</code>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={copy}>
+              {copied ? 'Copied!' : 'Copy'}
+            </Button>
+            {published ? (
+              <Button type="button" variant="ghost" size="sm" render={<a href={url} target="_blank" rel="noreferrer" />}>
+                Open
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function Field({ label, value }: { label: string; value?: string }) {
@@ -78,17 +125,7 @@ function EventDetail({ event }: { event: WrappitEvent }) {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Invite link</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
-            Guests will RSVP and pledge at this address (coming in the next phase):
-          </p>
-          <code className="rounded bg-muted px-2 py-1 text-sm">/i/{event.inviteSlug}</code>
-        </CardContent>
-      </Card>
+      <InviteLinkCard slug={event.inviteSlug} published={event.status === 'published'} />
     </main>
   );
 }
