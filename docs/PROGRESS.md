@@ -2,7 +2,7 @@
 
 Living tracker for the phase-by-phase build. See [`arrgift-wix-headless-plan.md`](arrgift-wix-headless-plan.md) for the full plan.
 
-_Last updated: 2026-07-18_
+_Last updated: 2026-07-19_
 
 ## Status at a glance
 
@@ -12,8 +12,8 @@ _Last updated: 2026-07-18_
 | **1 — Auth (Members)** | ✅ Done — built, tested, **live round-trip confirmed on Netlify** (register → email code → login all work) |
 | **2 — Create & manage events** | ✅ Done — built, tested, **live create→CMS round-trip confirmed on Netlify** (event created, appears in CMS + `/dashboard`) |
 | **3 — Public invite + RSVP + pledge** | ✅ **Done & fully verified** — 152-test suite; live RSVP + pledge on localhost + prod (rows in CMS); OG rich preview confirmed on WhatsApp |
-| **4 — Organizer dashboard detail** | 🟡 Built & tested (177-test suite; tsc/lint/build clean, no secret leak) — **live owner-view round-trip pending** |
-| 5 — Deploy & submit | ⬜ |
+| **4 — Organizer dashboard detail** | ✅ **Done & verified** — 177-test suite; **live owner-view confirmed** (organizer sees RSVP list + pledge total on `/events/[id]`) |
+| **5 — Deploy & submit** | 🔨 In progress — landing page done (Section A); prod verify / secret audit / repo cleanup / submit remaining |
 | 6 — Showcase extras (optional) | ⬜ |
 
 ## Testing
@@ -163,9 +163,33 @@ computed server-side.
 detail-page render), `tsc`, lint, `next build` (new `ƒ /api/events/[id]/summary` present) all pass;
 **no `WIX_API_KEY` in the client bundle** (public client id present).
 
-> 🔜 **Live owner-view round-trip still pending** (needs an organizer login + an event with Phase 3
-> RSVP/pledge rows): confirm the RSVP list + a pledge total matching the CMS, and the cross-tenant
-> **404** (member B on member A's event) / logged-out **401**. Then Phase 4 exit closes.
+> ✅ **Live owner-view confirmed (2026-07-19):** logged-in organizer opened `/events/[id]` and saw
+> the event's RSVP list and pledge total (from the Phase 3 rows). Phase 4 exit criterion **closed**.
+
+## Phase 5 — in progress
+
+Phase 5 is "Deploy & submit" — verification + paperwork, plus one scope add (landing page).
+Sections: **A** landing page · **B** prod verification · **C** secret/bundle audit ·
+**D** repo cleanup + README + set public · **E** submit the form.
+
+**A — Landing page (done, 2026-07-19).** `/` was a bare centered hero; fleshed it out in
+[`app/page.tsx`](../app/page.tsx) into a real marketing page: public header (logo + Log in /
+Get started), the hero, a **"How it works"** 3-step strip (Create → Share → Chip in), a
+**"Why Wrappit"** 3-feature row (no guest accounts / never hold funds / one gift), a closing CTA,
+and a footer. Static/SSG, base-nova tokens, `Button render={<Link/>}` idiom. Verified in-browser.
+
+> 🐛 **App-wide serif-font bug fixed (2026-07-19).** `app/globals.css` `@theme inline` had a
+> **self-referential** `--font-sans: var(--font-sans)` (+ `--font-heading`), which resolved to
+> empty — so `@apply font-sans` on `body` fell back to the browser's **Times/serif** default across
+> the **whole app**, not just the landing page. Fix: point at `--font-geist-sans` (the var the root
+> layout exposes via `next/font`). Gotchas: `@theme inline` inlines the value into the utility, so
+> `getComputedStyle(html).getPropertyValue('--font-sans')` reads **empty even when correct** —
+> verify via computed `font-family` on `body`/`h1` (`Geist, "Geist Fallback"`); and `next dev` did
+> **not** hot-recompile the `@theme` change (served a stale CSS chunk) — needed a dev-server restart.
+
+**B–E — remaining:** prod end-to-end on live Netlify, browser-bundle secret audit, starter/demo
+cleanup + README, set `AlonT6/Wrappit` public, then submit (Site Name / Site ID / Site URL / repo /
+Members + CMS tags).
 
 ## Security — event tenancy (fixed)
 
@@ -210,8 +234,12 @@ scoping. Regression tests: `use-my-events.test.tsx`, `use-event.test.tsx`.
 - [x] **Phase 3 exit closed (2026-07-19):** RSVP + pledge confirmed on localhost and prod → rows in CMS.
 - [x] **Phase 3 tail done (2026-07-19):** OG rich preview confirmed on WhatsApp (generated `opengraph-image` + `metadataBase`).
 - [x] **TEMP diagnostics removed (2026-07-19).**
-- [x] **Phase 4 built & tested (2026-07-19):** `/events/[id]` shows RSVP list, summed pledge total + contributor breakdown, and suggested share text, via the owner-gated `GET /api/events/[id]/summary` route. 177-test suite, tsc/lint/build clean, no secret leak.
-- [ ] **Phase 4 exit — live owner-view round-trip:** log in as an organizer with Phase 3 RSVP/pledge rows → verify the list + pledge total match the CMS; cross-tenant 404 + logged-out 401. Then close Phase 4.
+- [x] **Phase 4 exit closed (2026-07-19):** `/events/[id]` shows RSVP list, summed pledge total + contributor breakdown, and suggested share text, via the owner-gated `GET /api/events/[id]/summary` route. 177-test suite, tsc/lint/build clean, no secret leak; **live owner-view confirmed** (organizer sees the event's RSVPs + pledge total).
+- [x] **Phase 5 · A — Landing page done (2026-07-19):** `/` fleshed out (header, hero, how-it-works, features, CTA, footer); fixed app-wide serif-font bug (`--font-sans` self-reference → `--font-geist-sans`).
+- [ ] **Phase 5 · B — Prod verification:** full guest + organizer loop on live Netlify; hit every `app/api/*` + SSR `/i/[slug]` in prod; re-confirm OG preview.
+- [ ] **Phase 5 · C — Secret audit:** browser bundle has only `NEXT_PUBLIC_WIX_CLIENT_ID` (no `WIX_API_KEY`/`WIX_SITE_ID`); no secrets in Function logs.
+- [ ] **Phase 5 · D — Repo cleanup:** trim starter demo/deps; add README (what it is / stack / Wix solutions / run locally); set `AlonT6/Wrappit` **public** (keep the 177 tests — they read as rigor).
+- [ ] **Phase 5 · E — Submit:** Site Name / Site ID / Site URL (Netlify) / GitHub repo / tags = Members + CMS.
 
 ## How to run locally
 
