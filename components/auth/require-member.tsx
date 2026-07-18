@@ -11,15 +11,18 @@ import { useCurrentMember } from '@/app/model/auth/use-current-member';
 export function RequireMember({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { data: member, isLoading } = useCurrentMember();
+  const { data: member, isFetching } = useCurrentMember();
 
+  // Gate on isFetching (not isLoading): after login the member query is stale with a
+  // cached visitor `null`, so isLoading is false while a refetch is still in flight.
+  // Redirecting on that stale null would bounce a real member back to /login.
   useEffect(() => {
-    if (!isLoading && !member) {
+    if (!isFetching && !member) {
       router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
     }
-  }, [isLoading, member, pathname, router]);
+  }, [isFetching, member, pathname, router]);
 
-  if (isLoading || !member) {
+  if (isFetching || !member) {
     return (
       <div className="flex flex-1 items-center justify-center py-24">
         <span className="text-sm text-muted-foreground">Loading…</span>
