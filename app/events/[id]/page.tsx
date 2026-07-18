@@ -7,10 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useEvent } from '@/app/model/events/use-event';
 import type { WrappitEvent } from '@/app/model/events/event.types';
 
-function formatDate(value?: string): string {
+// partyDate is typed as an ISO yyyy-mm-dd string, but Wix Data returns date-type
+// columns as Date objects — so handle both, and never fall through returning a
+// non-string (a raw Date rendered as a child throws React error #31).
+function formatDate(value?: string | Date): string {
   if (!value) return 'Date TBD';
-  const d = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return value;
+  const d = value instanceof Date ? value : new Date(`${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return typeof value === 'string' ? value : 'Date TBD';
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 

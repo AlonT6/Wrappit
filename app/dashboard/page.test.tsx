@@ -57,4 +57,19 @@ describe('DashboardPage', () => {
     render(<DashboardPage />);
     expect(screen.getByText('Welcome, Ada')).toBeInTheDocument();
   });
+
+  // Regression: Wix Data returns a date-type column as a Date object, not the
+  // yyyy-mm-dd string our type claims. formatDate used to return that Date object
+  // straight through, so React tried to render it as a child and threw error #31
+  // ("Objects are not valid as a React child (found: [object Date])").
+  it('renders events whose partyDate comes back from Wix as a Date object', () => {
+    useMyEvents.mockReturnValue({
+      data: [{ _id: 'e1', childName: 'Maya', partyDate: new Date('2026-08-15'), status: 'published' }],
+      isLoading: false,
+    });
+    render(<DashboardPage />);
+    expect(screen.getByText('Maya')).toBeInTheDocument();
+    // The date must render as formatted text, never as a raw Date object.
+    expect(screen.getByText(/Aug.*15.*2026/)).toBeInTheDocument();
+  });
 });
