@@ -29,7 +29,7 @@ describe('toPublicEvent', () => {
   });
 
   it('never leaks internal / system fields', () => {
-    const pub = toPublicEvent(ROW) as Record<string, unknown>;
+    const pub = toPublicEvent(ROW) as unknown as Record<string, unknown>;
     expect(pub._id).toBeUndefined();
     expect(pub._owner).toBeUndefined();
     expect(pub._createdDate).toBeUndefined();
