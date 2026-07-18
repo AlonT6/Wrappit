@@ -44,3 +44,44 @@ export interface PledgeInput {
 
 export type RsvpResult = { ok: true; rsvpId: string } | { ok: false; errors: string[] };
 export type PledgeResult = { ok: true } | { ok: false; errors: string[] };
+
+/**
+ * An RSVP row as stored in the `rsvps` collection. `eventId` (never the slug) is
+ * the parent event's `_id`; `attending` is persisted as the `status` string.
+ */
+export interface Rsvp {
+  _id: string;
+  eventId: string;
+  status: 'yes' | 'no';
+  inviteeName: string;
+  parentName: string;
+  parentName2?: string;
+  parentEmail?: string;
+  parentPhone?: string;
+  dietary?: string;
+  _createdDate?: string | Date;
+}
+
+/** A pledge row as stored in the `pledges` collection. `rsvpId` links back to an RSVP if any. */
+export interface Pledge {
+  _id: string;
+  eventId: string;
+  contributorName: string;
+  amount: number;
+  method?: string;
+  note?: string;
+  rsvpId?: string;
+  _createdDate?: string | Date;
+}
+
+/**
+ * The organizer-facing rollup for one event, returned by GET /api/events/[id]/summary.
+ * Totals/counts are computed server-side so the client renders trusted numbers.
+ */
+export interface EventSummary {
+  rsvps: Rsvp[];
+  pledges: Pledge[];
+  pledgeTotal: number;
+  attendingCount: number;
+  notAttendingCount: number;
+}

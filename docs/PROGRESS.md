@@ -12,7 +12,7 @@ _Last updated: 2026-07-18_
 | **1 — Auth (Members)** | ✅ Done — built, tested, **live round-trip confirmed on Netlify** (register → email code → login all work) |
 | **2 — Create & manage events** | ✅ Done — built, tested, **live create→CMS round-trip confirmed on Netlify** (event created, appears in CMS + `/dashboard`) |
 | **3 — Public invite + RSVP + pledge** | ✅ **Done & fully verified** — 152-test suite; live RSVP + pledge on localhost + prod (rows in CMS); OG rich preview confirmed on WhatsApp |
-| 4 — Organizer dashboard detail | ⬜ Next |
+| **4 — Organizer dashboard detail** | 🟡 Built & tested (177-test suite; tsc/lint/build clean, no secret leak) — **live owner-view round-trip pending** |
 | 5 — Deploy & submit | ⬜ |
 | 6 — Showcase extras (optional) | ⬜ |
 
@@ -131,6 +131,42 @@ Vitest + jsdom + @testing-library. **152 tests / 26 files.** `npm test` (also `t
 >
 > 🧹 **TEMP diagnostics removed (2026-07-19):** the try/catch + `generateMetadata` wrapper in `app/i/[slug]/page.tsx` and the `detail` field in `app/api/events/route.ts` are gone.
 
+## Phase 4 — what was done
+
+**The organizer detail page (`/events/[id]`) now shows guest activity:** a **gift-fund card**
+(summed pledge total + per-contributor breakdown), an **RSVP list** (attending/declined counts +
+full contact details), and a **copyable suggested share message** — alongside the existing
+copy-invite-link card.
+
+**Read path — server route, not a browser hook (this is the key design point).** `rsvps`/`pledges`
+are **Private (admin-only)**, so the browser member client can't read them the way `useEvent` reads
+`events`, and guest rows aren't stamped with the organizer's `_owner`. So the read goes through a
+**new authenticated, owner-gated route** `GET /api/events/[id]/summary`
+([`route.ts`](../app/api/events/%5Bid%5D/summary/route.ts)) using **both clients**: the cookie OAuth
+client authenticates *who* is asking (`getCurrentMember` → 401), and the **admin API-key client**
+reads the Private rows. Because the admin client bypasses all Wix permissions, the
+`event._owner === memberId` check is the **only** thing isolating one organizer's guest PII — a
+non-owner (or unknown id) gets **404, not 403**, so event existence isn't leaked. Totals/counts are
+computed server-side.
+
+**Model/UI added:**
+- `app/model/invite/invite.types.ts` — stored-row types `Rsvp` / `Pledge` / `EventSummary`.
+- `app/model/events/get-event-summary.ts` — browser GET helper (mirrors `submit-rsvp`'s `readErrors`).
+- `app/model/events/use-event-summary.ts` — TanStack Query hook, **cache keyed by member id** (same
+  tenant-isolation reason as `use-event`), consumes the route (not Wix Data directly).
+- `app/model/events/share-text.ts` — pure `buildShareText(event, inviteUrl)` (origin-agnostic, testable).
+- `app/events/[id]/page.tsx` — three new cards + extracted reusable `CopyButton`; `EventDetail` is
+  now exported for testing (the default export unwraps `params` via React `use`, which suspends and
+  is awkward to drive in vitest — test the inner component directly instead).
+
+**Verified:** 177-test suite (was 157; +20 across the summary route, hook, `share-text`, and the
+detail-page render), `tsc`, lint, `next build` (new `ƒ /api/events/[id]/summary` present) all pass;
+**no `WIX_API_KEY` in the client bundle** (public client id present).
+
+> 🔜 **Live owner-view round-trip still pending** (needs an organizer login + an event with Phase 3
+> RSVP/pledge rows): confirm the RSVP list + a pledge total matching the CMS, and the cross-tenant
+> **404** (member B on member A's event) / logged-out **401**. Then Phase 4 exit closes.
+
 ## Security — event tenancy (fixed)
 
 **Every logged-in member could see all events — fixed.** The member read paths
@@ -174,7 +210,8 @@ scoping. Regression tests: `use-my-events.test.tsx`, `use-event.test.tsx`.
 - [x] **Phase 3 exit closed (2026-07-19):** RSVP + pledge confirmed on localhost and prod → rows in CMS.
 - [x] **Phase 3 tail done (2026-07-19):** OG rich preview confirmed on WhatsApp (generated `opengraph-image` + `metadataBase`).
 - [x] **TEMP diagnostics removed (2026-07-19).**
-- [ ] **Phase 4 — Organizer dashboard detail:** on `/events/[id]`, show the RSVP list, the **summed pledge total**, copy-invite-link (done), and suggested share text. Exit: organizer sees submitted RSVPs and a correct pledge total.
+- [x] **Phase 4 built & tested (2026-07-19):** `/events/[id]` shows RSVP list, summed pledge total + contributor breakdown, and suggested share text, via the owner-gated `GET /api/events/[id]/summary` route. 177-test suite, tsc/lint/build clean, no secret leak.
+- [ ] **Phase 4 exit — live owner-view round-trip:** log in as an organizer with Phase 3 RSVP/pledge rows → verify the list + pledge total match the CMS; cross-tenant 404 + logged-out 401. Then close Phase 4.
 
 ## How to run locally
 
