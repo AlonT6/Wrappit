@@ -1,5 +1,6 @@
 import { createClient, OAuthStrategy } from '@wix/sdk';
 import { members } from '@wix/members';
+import { items } from '@wix/data';
 import { WIX_REFRESH_TOKEN } from '@/app/model/auth/auth.const';
 
 /** Minimal cookie reader shared by the server (next/headers) and browser (js-cookie) adapters. */
@@ -30,7 +31,7 @@ export function getWixClient({ cookieStore }: { cookieStore: CookieStore }) {
   if (!CLIENT_ID) return null;
   const refreshToken = getRefreshToken(cookieStore);
   return createClient({
-    modules: { members },
+    modules: { members, items },
     auth: OAuthStrategy({
       clientId: CLIENT_ID,
       ...(refreshToken

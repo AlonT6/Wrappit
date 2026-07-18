@@ -9,12 +9,18 @@ _Last updated: 2026-07-18_
 | Phase | State |
 |---|---|
 | **0 — Setup & Wix connection** | ✅ Done (Netlify deploy optional, not yet done) |
-| **1 — Auth (Members)** | ✅ Built & validated (live member round-trip pending a manual run) |
-| 2 — Create & manage events | ⬜ Next |
-| 3 — Public invite + RSVP + pledge | ⬜ |
+| **1 — Auth (Members)** | ✅ Built, tested (105-test suite), dashboard bug fixed (live member round-trip pending a manual run) |
+| **2 — Create & manage events** | ✅ Built & tested (live create→CMS round-trip pending a manual run) |
+| 3 — Public invite + RSVP + pledge | ⬜ Next |
 | 4 — Organizer dashboard detail | ⬜ |
 | 5 — Deploy & submit | ⬜ |
 | 6 — Showcase extras (optional) | ⬜ |
+
+## Testing
+
+Vitest + jsdom + @testing-library. **105 tests / 17 files.** `npm test` (also `test:watch`, `test:coverage`). Covers the auth surface (client factory, actions/state-machine, member hook, gate, login/signup/forgot flows) and the events surface (slug, validation, `POST /api/events`, `useMyEvents`/`createEvent`/`useEvent`, new-event form, dashboard list). Setup notes: no `@vitejs/plugin-react` (Babel peer conflict — Vitest's oxc handles JSX); `@/*` via native `resolve.tsconfigPaths`.
+
+**Dashboard "doesn't load" — fixed.** `RequireMember` redirected on `!isLoading && !member`, but after login the member query holds a stale cached visitor `null` (isLoading=false) while a refetch is in flight, bouncing a real member to `/login`. Now gates on `isFetching`. Regression test: `components/auth/require-member.dashboard-bug.test.tsx`.
 
 ## Key decisions
 
@@ -67,9 +73,27 @@ _Last updated: 2026-07-18_
 
 > ⏳ **Not yet run:** the full live member round-trip (register → receive email code → verify → land on dashboard → log out) needs a real inbox for the verification code — do this manually to close the Phase 1 exit criterion. Depending on the Wix project's signup policy, `register` may return `SUCCESS` directly (no verification) or `EMAIL_VERIFICATION_REQUIRED`; both paths are handled.
 
+## Phase 2 — what was done
+
+**Events model (`app/model/events/`):**
+- `event.types.ts` — `EventInput` / `WrappitEvent` / `PaymentLink` / `GiftDisplay` / `Charity`, `PAYMENT_METHODS`.
+- `event.slug.ts` — `slugify` + `generateInviteSlug` (name base + 6-char suffix; rand injectable for tests).
+- `event.validation.ts` — `validateEventInput(raw)` normalizes an untrusted payload → clean `EventInput` or a list of friendly errors (required fields, ISO date, http(s) URLs, payment-row cleanup, optional gift/charity objects).
+- `use-my-events.ts` / `use-event.ts` — TanStack Query hooks over the **member browser client** (`@wix/data` `items`), scoped to the member's own rows by "Site Member Author" read perms.
+- `create-event.ts` — POSTs to `/api/events`, maps the response to `{ ok, event } | { ok:false, errors }`.
+
+**Server (`app/api/events/route.ts`):** `POST` authenticates the member via the cookie OAuth client (`getCurrentMember` → 401 if none), validates the body, generates a **unique** `inviteSlug` (uniqueness checked with the **admin API-key client** since a member only sees their own rows), then **inserts via the member client** so Wix stamps `_owner` = member id. `@wix/data` `items` added to the base OAuth client (`wix-client.base.ts`).
+
+**UI:** `components/app-chrome.tsx` (shared gated header, used by `app/dashboard/layout.tsx` + new `app/events/layout.tsx`); `/events/new` (all fields incl. dynamic payment-link rows, publish toggle, **localStorage draft autosave** cleared on success); `/dashboard` now lists the member's events (empty state + rows linking to detail); `/events/[id]` member-gated **detail shell**. Added `components/ui/textarea.tsx`.
+
+**Verified:** 105-test suite, `tsc`, lint, `next build` (all routes incl. `/api/events`, `/events/[id]`, `/events/new`) pass; **no `WIX_API_KEY` in the client bundle** (public client id present).
+
+> ⏳ **Not yet run:** the live create→CMS round-trip (log in as a member → create an event → see the row in the Wix CMS dashboard → see it on `/dashboard`) needs a real member session — do this manually to close the Phase 2 exit criterion. Assumes the `events` collection permission is **"Site Member Author"** (create/read); if creates 403, set that in the Wix dashboard.
+
 ## Non-obvious gotchas (for future sessions)
 
 - shadcn `base-nova` uses **Base UI** (`@base-ui/react`), not Radix — `Button` has no `asChild`; use `render={<Link/>}`.
+- `@wix/data` `items`: `items.query(collectionId).eq(field, val).find()` → `{ items }`; `items.insert(collectionId, item)` → the created item; `items.get(collectionId, id)` → the item. Member OAuth writes stamp `_owner`; admin API-key reads see all rows (used for global slug-uniqueness).
 - Wix auth methods (`register`/`login`/`processVerification`/`sendPasswordResetEmail`/`logout`) live on **`client.auth`** (the OAuthStrategy instance), NOT `@wix/members`. `@wix/members` is profile ops only.
 - `wix_refreshToken` cookie is intentionally **not httpOnly** (browser client reads it via js-cookie) — matches Wix's official starter.
 
@@ -77,7 +101,8 @@ _Last updated: 2026-07-18_
 
 - [ ] (Optional Phase 0 tail) Commit + push scaffold → connect Netlify to repo → set the 3 env vars in Netlify → confirm live URL.
 - [ ] **Close Phase 1 exit:** manually register a real member, verify the email code, confirm landing on the empty dashboard, and log out (needs a real inbox — can't be done headlessly).
-- [ ] **Phase 2 — Create & manage events:** `POST /api/events` (member-scoped, slug uniqueness) → `/events/new` form (all fields incl. payment links, localStorage autosave) → `/dashboard` lists the member's events → `/events/[id]` detail shell. Exit: creating an event writes a row visible in the Wix CMS dashboard and it appears on `/dashboard`.
+- [ ] **Close Phase 2 exit:** log in as a member, create an event at `/events/new`, confirm the row appears in the **Wix CMS dashboard** and on `/dashboard`. If the create 403s, set the `events` collection permission to **"Site Member Author"**.
+- [ ] **Phase 3 — Public invite + RSVP + pledge:** `GET /api/invite`, `POST /api/rsvp`, `POST /api/pledge`; SSR `/i/[slug]` with OG/Twitter meta; 3-step guest flow. Exit: an incognito visitor completes RSVP + pledge → rows written; rich link preview.
 
 ## How to run locally
 
