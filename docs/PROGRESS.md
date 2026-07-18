@@ -22,6 +22,10 @@ Vitest + jsdom + @testing-library. **105 tests / 17 files.** `npm test` (also `t
 
 **Dashboard "doesn't load" — fixed.** `RequireMember` redirected on `!isLoading && !member`, but after login the member query holds a stale cached visitor `null` (isLoading=false) while a refetch is in flight, bouncing a real member to `/login`. Now gates on `isFetching`. Regression test: `components/auth/require-member.dashboard-bug.test.tsx`.
 
+**Login 400 on `/oauth2/authorize` — fixed.** `getBrowserWixClient()` built a **new** Wix client on every call, so `login()`/`register()` seeded a visitor session on one client while `getMemberTokensForDirectLogin()` (the hidden-iframe PKCE exchange) ran on a *different* client — the `sessionToken` didn't match the requesting visitor identity, so Wix rejected the `web_message` authorize call with a 400. Wix's docs explicitly require **one shared client instance** across the app. Fix: `getBrowserWixClient()` now memoizes a **singleton**; `signOut()` calls the new `resetBrowserWixClient()` so logout drops the in-memory member tokens. Regression tests in `wix-client.browser.test.ts`. Note: `getMemberTokensForDirectLogin` is **desktop-only** (needs 3rd-party cookies); mobile needs the full-page-redirect flow.
+
+**Login 400 `Allowed_domains_fetch_failed` — Wix dashboard config (not code).** The `web_message` authorize call validates the app's origin against the OAuth app's allow-list; if it's empty the fetch fails → 400. Fix in **Settings → Development & integrations → Headless Settings → OAuth app `ceba20d8-…` → Settings → URLs**: add both origins (`http://localhost:3000` and the Netlify URL) to **Allowed redirect domains** AND **Allowed authorization redirect URIs** (exact match — scheme/host/port/trailing-slash all count). Retry in fresh incognito.
+
 ## Key decisions
 
 - **Starter built into THIS repo** (`AlonT6/Wrappit`), not Wix's auto-created repo. User connects Netlify to it manually.

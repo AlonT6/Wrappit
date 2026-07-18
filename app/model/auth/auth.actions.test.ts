@@ -15,6 +15,7 @@ import {
 const { getBrowserWixClient } = vi.hoisted(() => ({ getBrowserWixClient: vi.fn() }));
 vi.mock('@/app/model/auth/wix-client.browser', () => ({
   getBrowserWixClient: () => getBrowserWixClient(),
+  resetBrowserWixClient: () => {},
 }));
 
 vi.mock('js-cookie', () => ({

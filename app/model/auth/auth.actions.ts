@@ -1,6 +1,9 @@
 import Cookies from 'js-cookie';
 import { LoginState, type StateMachine, type Tokens } from '@wix/sdk';
-import { getBrowserWixClient } from '@/app/model/auth/wix-client.browser';
+import {
+  getBrowserWixClient,
+  resetBrowserWixClient,
+} from '@/app/model/auth/wix-client.browser';
 import { WIX_REFRESH_TOKEN } from '@/app/model/auth/auth.const';
 
 /**
@@ -139,4 +142,6 @@ export async function sendPasswordReset(email: string): Promise<void> {
 /** Clear the member session. The next navigation re-seeds a visitor token (see proxy.ts). */
 export async function signOut(): Promise<void> {
   Cookies.remove(WIX_REFRESH_TOKEN);
+  // Drop the shared client so it no longer holds the (now cleared) member tokens in memory.
+  resetBrowserWixClient();
 }
