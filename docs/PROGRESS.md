@@ -11,7 +11,7 @@ _Last updated: 2026-07-18_
 | **0 — Setup & Wix connection** | ✅ Done (Netlify deploy optional, not yet done) |
 | **1 — Auth (Members)** | ✅ Done — built, tested, **live round-trip confirmed on Netlify** (register → email code → login all work) |
 | **2 — Create & manage events** | ✅ Done — built, tested, **live create→CMS round-trip confirmed on Netlify** (event created, appears in CMS + `/dashboard`) |
-| **3 — Public invite + RSVP + pledge** | ✅ Done — built, tested (152-test suite), **live RSVP + pledge confirmed on both localhost and production Netlify** (rows in CMS); OG preview still to verify |
+| **3 — Public invite + RSVP + pledge** | ✅ **Done & fully verified** — 152-test suite; live RSVP + pledge on localhost + prod (rows in CMS); OG rich preview confirmed on WhatsApp |
 | 4 — Organizer dashboard detail | ⬜ Next |
 | 5 — Deploy & submit | ⬜ |
 | 6 — Showcase extras (optional) | ⬜ |
@@ -115,7 +115,8 @@ Vitest + jsdom + @testing-library. **152 tests / 26 files.** `npm test` (also `t
 - `POST /api/pledge` — validate → resolve slug→published event → insert into `pledges` with `eventId`, numeric `amount`, optional `rsvpId` link.
 
 **UI:**
-- `app/i/[slug]/page.tsx` — **SSR** server component; `generateMetadata()` emits OG/Twitter tags (gift image when present); `notFound()` for unknown/draft. Its own minimal public header/footer (NOT the member-gated `app-chrome`).
+- `app/i/[slug]/page.tsx` — **SSR** server component; `generateMetadata()` emits OG/Twitter tags; `notFound()` for unknown/draft. Its own minimal public header/footer (NOT the member-gated `app-chrome`).
+- `app/i/[slug]/opengraph-image.tsx` — generated OG image (`next/og`, branded gradient card w/ child name + date). File convention auto-wires `og:image`/`twitter:image`. **No emoji in the image** (satori can't render them without an embedded font); node runtime (Wix admin client can't run on edge). Paired with `metadataBase` in `app/layout.tsx` for absolute URLs.
 - `invite-flow.tsx` (`'use client'`) — 3-step state machine: **invite → RSVP → pledge → done**. Pledge is reachable standalone ("Chip in for the gift" skips RSVP); if a guest RSVPs first, the returned `rsvpId` is linked onto the pledge.
 - `not-found.tsx` — friendly public 404.
 - `app/events/[id]/page.tsx` — placeholder replaced with a real `InviteLinkCard` (full origin-aware URL, copy button, draft warning).
@@ -126,9 +127,35 @@ Vitest + jsdom + @testing-library. **152 tests / 26 files.** `npm test` (also `t
 >
 > 🔧 **Prod SSR 500 root cause (2026-07-19): `WIX_API_KEY` / `WIX_SITE_ID` were not set in Netlify's env**, so `getWixApiClient()` threw during the `/i/[slug]` server render (and would have broken all prod RSVP/pledge writes too). NOT a code bug. See the Netlify env-var gotcha below. Diagnosed by a TEMP try/catch on the page that surfaced the real error (Netlify hides Server Component errors behind a digest).
 >
-> ⏳ **Still to verify:** the OG/Twitter rich preview (paste the prod invite URL into an OG debugger / chat app).
+> ✅ **OG rich preview confirmed on WhatsApp (2026-07-19).** Needed two fixes: (1) `metadataBase` set in `app/layout.tsx` so relative image URLs resolve to absolute `https://…` (WhatsApp requires absolute); (2) a generated OG image via the file convention `app/i/[slug]/opengraph-image.tsx` (`next/og` — branded gradient card with the child's name + date). WhatsApp shows **no card at all without a valid absolute `og:image`**, and caches previews hard (append `?v=N` to force a refresh when re-testing).
 >
-> 🧹 **TEMP diagnostics to remove before final submit:** the try/catch + `generateMetadata` wrapper in `app/i/[slug]/page.tsx`, and the `detail` field in `app/api/events/route.ts`.
+> 🧹 **TEMP diagnostics removed (2026-07-19):** the try/catch + `generateMetadata` wrapper in `app/i/[slug]/page.tsx` and the `detail` field in `app/api/events/route.ts` are gone.
+
+## Security — event tenancy (fixed)
+
+**Every logged-in member could see all events — fixed.** The member read paths
+(`use-my-events.ts`, `use-event.ts`) had **no `_owner` filter**; tenant isolation relied
+100% on the `events` collection's Wix Read permission being "Site member authors". If that
+permission is broader ("Anyone" / "All site members") the leak is total and silent — which is
+what happened. Fix is **defense-in-depth in code**: `use-my-events` now queries
+`.eq('_owner', memberId)` and `use-event` rejects any row whose `_owner !== memberId`
+(memberId from `useCurrentMember()._id`); both caches are keyed by member id so a second login
+on the same browser can't read a prior member's cached rows. `_owner` is the **member id** Wix
+stamps because events are inserted via the member OAuth session (`app/api/events/route.ts`) —
+NOT the API-key identity, which is a separate non-member principal and must never be used for
+scoping. Regression tests: `use-my-events.test.tsx`, `use-event.test.tsx`.
+
+> ✅ **Live cross-tenant check confirmed (2026-07-19):** member B sees none of member A's
+> events on `/dashboard` and gets not-found on A's `/events/[id]`; `events` collection Read
+> permission verified = "Site member authors".
+
+> ⚠️ **Wix dashboard permission:** CMS → Collections → `events` →
+> Permissions & Privacy → Read = **"Site member authors"** (preset "Member-generated content").
+> The code fix no longer depends on it, but it's the correct setting and a second line of defense.
+>
+> 🔜 **Phase 4 note:** when the organizer detail reads `rsvps`/`pledges` via the admin client,
+> filter to event ids the caller owns (assert `event._owner === currentMember._id`) — the admin
+> client bypasses all permissions.
 
 ## Non-obvious gotchas (for future sessions)
 
@@ -145,9 +172,9 @@ Vitest + jsdom + @testing-library. **152 tests / 26 files.** `npm test` (also `t
 - [x] **Phase 1 exit closed (2026-07-18):** live register → email code → login confirmed on prod.
 - [x] **Phase 2 exit closed (2026-07-18):** live member create → CMS row + `/dashboard` confirmed (after setting `events` perm to "Member-generated content").
 - [x] **Phase 3 exit closed (2026-07-19):** RSVP + pledge confirmed on localhost and prod → rows in CMS.
-- [ ] **Phase 3 tail:** verify the OG rich preview (paste the prod invite URL into an OG debugger / chat app).
+- [x] **Phase 3 tail done (2026-07-19):** OG rich preview confirmed on WhatsApp (generated `opengraph-image` + `metadataBase`).
+- [x] **TEMP diagnostics removed (2026-07-19).**
 - [ ] **Phase 4 — Organizer dashboard detail:** on `/events/[id]`, show the RSVP list, the **summed pledge total**, copy-invite-link (done), and suggested share text. Exit: organizer sees submitted RSVPs and a correct pledge total.
-- [ ] **Before final submit — remove TEMP diagnostics:** the try/catch + `generateMetadata` wrapper in `app/i/[slug]/page.tsx`, and the `detail` field in the 500 handler in `app/api/events/route.ts`.
 
 ## How to run locally
 

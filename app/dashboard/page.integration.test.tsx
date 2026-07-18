@@ -51,7 +51,9 @@ const EVENTS = [
 function loggedInClient() {
   return {
     members: { getCurrentMember: vi.fn().mockResolvedValue({ member: MEMBER }) },
-    items: { query: vi.fn(() => ({ find: vi.fn().mockResolvedValue({ items: EVENTS }) })) },
+    items: {
+      query: vi.fn(() => ({ eq: vi.fn(() => ({ find: vi.fn().mockResolvedValue({ items: EVENTS }) })) })),
+    },
   };
 }
 
